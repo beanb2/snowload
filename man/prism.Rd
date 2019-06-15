@@ -4,18 +4,12 @@
 \alias{prism}
 \title{Title: PRISM}
 \usage{
-prism(variables = c("RESPONSE", "ELEVATION"), locations, newdata,
-  distImp = 0.8, minRad = 10, wdistance = 2, welevRange = c(200,
-  2500), welevation = c("ELEVATION", 1), wbasin = c(NA, 3),
-  weco = c(NA, 3), bound = FALSE, weights = FALSE,
-  transform = "none")
+prism(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
+  distImp = 0.8, minRad = 10, wdistance = 2, welevRange = list(lwr
+  = 200, upr = 2500), welevation = c("ELEVATION", 1), wbasin = c(NA,
+  3), weco = c(NA, 3), bound = FALSE, weights = FALSE, ...)
 }
 \arguments{
-\item{variables}{The variables used in the PRISM regression. The first variable
-is the reponse and all remaining variables are treated as explanatory. This
-is a replacement for a formula call as the use of lsfit greatly speeds the
-computations.}
-
 \item{locations}{The measurement locations, of class SpatialPointsDataFrame,
 containing all the necessary colunmns to run the PRISM algorithm.}
 
@@ -60,15 +54,16 @@ allowed to extrapolate.}
 of the predictions. This argument is only relevant if one wishes to
 plot the PRISM predictions.}
 
-\item{transform}{If "none" (the default). Regular least squares regression is
-applied. If "log" or "sqrt" then the appropriate transformations are
-applied. If not one of the options mentioned above, the system will
-throw an error.}
+\item{variables}{The variables used in the PRISM regression. The first variable
+is the reponse and all remaining variables are treated as explanatory. This
+is a replacement for a formula call as the use of lsfit greatly speeds the
+computations.}
+
+\item{score}{Additional arguments to}
 }
 \value{
-An appended version of the prediction locations spatial object
-  with the added "prism" column. If weights = TRUE, then a list is returned
-  with the second item being the matrix of PRISM weights.
+A numeric vector of predictions with length equal to the number
+  of rows in newdata.
 }
 \description{
 A function that implements the PRISM algorithm as developed by Daly et.al.

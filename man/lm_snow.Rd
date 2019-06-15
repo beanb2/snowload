@@ -23,9 +23,8 @@ are restricted to the range of observed data in the locations object.}
 outputs at the measurement locations.}
 }
 \value{
-An appended newdata object that includes a "lm_snow" column
-  with the model predictions. Note that if bound_elevation = TRUE then
-  the elevations in this object may be altered from the original.
+A numeric vector of predictions with length equal to the number
+  of rows in newdata.
 }
 \description{
 This function is nothing more than a wrapper to the standard linear

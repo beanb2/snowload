@@ -22,10 +22,8 @@
 #'   correlation between locations when fitting the linear model for
 #'   elevation.
 #'
-#' @return An appended version of newdata which includes a column
-#'   named "rkriging" containing the predictions. Note that if
-#'   bound_elevation-TRUE then the elevations in this object might be
-#'   different than the original object.
+#' @return A numeric vector of predictions with length equal to the number
+#'   of rows in newdata.
 #'
 #' @export
 rkriging = function(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
@@ -40,6 +38,10 @@ rkriging = function(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
   # Restrct elevation trend estimates to be no greater than the trend value
   # of the highest elevation station location.
   if(bound_elevation){
+    if(length(vars) > 2){
+      warning("More than one explanatory variable supplied. Assuming the
+              first variable corresponds to elevation.")
+    }
     bound_el <- c(min(locations@data[, vars[2]], na.rm = TRUE),
                   max(locations@data[, vars[2]], na.rm = TRUE))
 
@@ -47,6 +49,14 @@ rkriging = function(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
       bound_el[2]
     newdata@data[,vars[2]][newdata@data[, vars[2]] < bound_el[1]] <-
       bound_el[1]
+  }
+
+  # If the specified model has any NA values, call fit.variogram to
+  # define the model.
+  if(any(c(is.na(model$model), is.na(model$psill), is.na(model$range)))){
+    g <- gstat::gstat(NULL, "vario", formula, locations)
+    g_vario <- gstat::variogram(g)
+    model <- gstat::fit.variogram(g_vario, model)
   }
 
   if(sklm){
@@ -63,9 +73,10 @@ rkriging = function(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
   }
 
   # If requested, bound predictions by observations in the data
+  # model.frame evaluates the provided expression for us.
+  # The response is given in the first column.
   if(bound_output){
-    temp_out <- lm(formula, data = as.data.frame(locations))
-    temp_out <- temp_out$residuals + temp_out$fitted.values
+    temp_out <- stats::model.frame(formula, data = locations)[, 1]
     bound_out <- c(min(temp_out, na.rm = TRUE),
                    max(temp_out, na.rm = TRUE))
 
@@ -73,7 +84,5 @@ rkriging = function(formula = log(RESPONSE) ~ ELEVATION, locations, newdata,
     krigetest[krigetest > bound_out[2]] <- bound_out[2]
   }
 
-  newdata$rkriging <- krigetest
-
-  return(newdata)
+  return(krigetest)
 }

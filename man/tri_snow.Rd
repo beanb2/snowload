@@ -4,13 +4,10 @@
 \alias{tri_snow}
 \title{Linear Triangulation Interpolation}
 \usage{
-tri_snow(variables = c("RESPONSE", "ELEVATION"), locations, newdata,
-  density = c(500, 500), NGSL = TRUE, bound_output = FALSE, ...)
+tri_snow(formula = RESPONSE ~ ELEVATION, locations, newdata,
+  density = c(500, 500), bound_output = FALSE, ...)
 }
 \arguments{
-\item{variables}{A vector of length two specifying the column names
-of the response and elevation variables respectively.}
-
 \item{locations}{The measurement locations to be used for interpolation.
 An object of class SpatialPointsDataFrame}
 
@@ -20,18 +17,25 @@ SpatialPointsDataFrame, SpatialGridDataFrame, or SpatialPixelsDataFrame.}
 \item{density}{The density of the grid created by the interpolation.
 The first argument specifies the x density and the second the y density.}
 
-\item{NGSL}{If true, normalized ground snow loads (which are snow loads
-divided by elevation) are used in prediction.}
+\item{A}{forumla argument specifying the response and explanatory variables.
+This formula should only be of the form RESPONSE ~ ELEVATION. No other
+formula types are allowed.}
 
 \item{bound_ouput}{If TRUE, the final ouputs are restricted to the observed
 outputs at the measurement locations.}
 }
 \value{
-An appended version of newdata that includes a column named
-  "tri_snow" with the predictions.
+A numeric vector of predictions with length equal to the number
+  of rows in newdata.
 }
 \description{
 A function that implements a linear triangulation interpolation.
 The function is a wrapper to appropriate functions in the
 akima package.
+}
+\details{
+Note that this function does not use the formula call directly.
+  Rather, if an explanatory variable is present, it is assumed to be
+  the variable name for elevation and a normalized response, which is
+  simply response/elevation, is used.
 }

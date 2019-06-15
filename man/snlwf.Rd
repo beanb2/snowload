@@ -4,18 +4,22 @@
 \alias{snlwf}
 \title{The 1992 Utah Snow Load Equations}
 \usage{
-snlwf(dem, elevVar = c("ELEVATION"), feet = FALSE)
+snlwf(formula = ~ELEVATION, newdata, feet = FALSE)
 }
 \arguments{
-\item{dem}{A spatial data frame containing the desired prediction locations.
+\item{newdata}{A spatial data object containing the desired prediction locations.
 Note that non missing predictions are only provided for locations within the
 state of Utah.}
 
-\item{elevVar}{The name of the variable in DEM corresponding to elevation.
-The elevation should be specified in meters or feet.}
-
 \item{feet}{A logical indicating whether elevation is measured in meters
 or feet.}
+
+\item{A}{forumla of the form ~ELEVATION. The function assumes that the last
+given variable corresponds to the elevation column and all other arguments
+are ignored.}
+
+\item{elevVar}{The name of the variable in DEM corresponding to elevation.
+The elevation should be specified in meters or feet.}
 }
 \value{
 A SpatialPointsDataFrame version of dem that includes a snlw

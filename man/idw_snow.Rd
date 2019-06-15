@@ -4,11 +4,14 @@
 \alias{idw_snow}
 \title{Inverse Distance Weighting, the Idaho way}
 \usage{
-idw_snow(variables = c("RESPONSE", "ELEVATION"), locations, newdata,
+idw_snow(formula = RESPONSE ~ ELEVATION, locations, newdata,
   tlayer = 1220, power = c(2, 6), NGSL = TRUE,
   bound_output = FALSE, ...)
 }
 \arguments{
+\item{formula}{A formula that is passed to the idw function in the
+sp package.}
+
 \item{locations}{The measurement locations to be used for interpolation.
 An object of class SpatialPointsDataFrame}
 
@@ -28,9 +31,6 @@ for in the 2015 Idaho study.}
 
 \item{bound_output}{If true, the final predictions are capped at the range
 of observed data.}
-
-\item{formula}{A formula that is passed to the idw function in the
-sp package.}
 }
 \value{
 An appended version of the newdata class containing a column named

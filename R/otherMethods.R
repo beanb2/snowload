@@ -24,32 +24,42 @@
 #'   "idw_snow".
 #'
 #' @export
-idw_snow = function(variables = c("RESPONSE", "ELEVATION"),
+idw_snow = function(formula = RESPONSE ~ ELEVATION,
                     locations, newdata, tlayer = 1220, power = c(2, 6),
                     NGSL = TRUE, bound_output = FALSE, ...){
   # Run generic tests of model inputs
   input_check(locations, newdata)
 
+  modeldf <- stats::model.frame(formula, locations)
+  vars <- all.vars(formula)
+
   # Use the Normalized ground snow loads
   if(NGSL){
+    # NGSL can only be performed if a single explanatory variable
+    # is provided (representing elevation)
+    if(ncol(modeldf) != 2){
+      stop("Exact one response variable and one explanatory variable
+           (corresponding to elevation) must be supplied when NGSL = TRUE")
+    }
+
     # Prevent weird things from happening when elevation
     # is very close to zero or negative.
-    locations@data[as.vector(locations[, variables[2]]@data < 1), variables[2]] <- 1
-    newdata@data[as.vector(newdata[, variables[2]]@data < 1), variables[2]] <- 1
+    modeldf[modeldf[, 2] < 1, 2] <- 1
 
-    locations@data[, variables[1]] <-
-      locations@data[, variables[1]]/locations@data[, variables[2]]
+    newdata$newelev <- newdata@data[, vars[2]]
+    newdata$newelev[newdata$newelev < 1] <- 1
+
+    locations$NGSL <- modeldf[, 1]/modeldf[, 2]
+    formula = NGSL ~ 1
   }
 
   # Split stations into two layers (above and below 4000 ft (1219.2m) in the idaho method)
-  locations.low = locations[as.vector(locations[, variables[2]]@data < tlayer), ]
-  locations.high = locations[as.vector(locations[, variables[2]]@data >= tlayer),]
+  locations.low = locations[as.vector(locations[, vars[2]]@data < tlayer), ]
+  locations.high = locations[as.vector(locations[, vars[2]]@data >= tlayer),]
 
-  # Create a formula from the provided variables.
-  tform <- as.formula(paste(variables[1], "1", sep = "~"))
   # Obtain the bi-layer results
   if(nrow(locations.low) > 0){
-    temp2 = gstat::idw(tform, locations = locations.low, newdata = newdata,
+    temp2 = gstat::idw(formula, locations = locations.low, newdata = newdata,
                        idp = power[1], ...)$var1.pred
   }else{
     temp2 = NULL
@@ -57,7 +67,7 @@ idw_snow = function(variables = c("RESPONSE", "ELEVATION"),
     # call. = FALSE)
   }
   if(nrow(locations.high) > 0){
-    temp6 = gstat::idw(tform, locations = locations.high, newdata = newdata,
+    temp6 = gstat::idw(formula, locations = locations.high, newdata = newdata,
                        idp = power[2], ...)$var1.pred
   }else{
     temp6 = NULL
@@ -70,24 +80,23 @@ idw_snow = function(variables = c("RESPONSE", "ELEVATION"),
   }else if(is.null(temp6)){
     results = temp2
   }else{
-    results[newdata@data[, variables[2]] < tlayer] = temp2[newdata@data[, variables[2]] < tlayer]
-    results[newdata@data[, variables[2]] >= tlayer] = temp6[newdata@data[, variables[2]] >= tlayer]
+    results[newdata@data[, vars[2]] < tlayer] = temp2[newdata@data[, vars[2]] < tlayer]
+    results[newdata@data[, vars[2]] >= tlayer] = temp6[newdata@data[, vars[2]] >= tlayer]
   }
 
   # Return ground snow load predictions as opposed to simply the NGSL.
-  if(NGSL){results = results*newdata@data[, variables[2]]}
+  if(NGSL){results = results*newdata$newelev}
 
   # If requested restrict the response values to the highest valued snow load in the dataset.
   if(bound_output){
-    bound_out <- c(min(locations@data[, variables[1]], na.rm = TRUE),
-                   max(locations@data[, variables[1]], na.rm = TRUE))
+    bound_out <- c(min(modeldf[, 1], na.rm = TRUE),
+                   max(modeldf[, 2], na.rm = TRUE))
 
     results[results < bound_out[1]] <- bound_out[1]
     results[results > bound_out[2]] <- bound_out[2]
   }
 
-  newdata$idw_snow <- results
-  return(newdata)
+  return(results)
 } # End the function
 
 
@@ -98,7 +107,10 @@ idw_snow = function(variables = c("RESPONSE", "ELEVATION"),
 #' snowload package to make maps of the 1992 ground snow load equations
 #' (referred to as SNLW).
 #'
-#' @param dem A spatial data frame containing the desired prediction locations.
+#' @param A forumla of the form ~ELEVATION. The function assumes that the last
+#'   given variable corresponds to the elevation column and all other arguments
+#'   are ignored.
+#' @param newdata A spatial data object containing the desired prediction locations.
 #'   Note that non missing predictions are only provided for locations within the
 #'   state of Utah.
 #' @param elevVar The name of the variable in DEM corresponding to elevation.
@@ -110,51 +122,50 @@ idw_snow = function(variables = c("RESPONSE", "ELEVATION"),
 #'   prediction column.
 #'
 #' @export
-snlwf = function(dem, elevVar = c("ELEVATION"), feet = FALSE){
+snlwf = function(formula = ~ELEVATION, newdata, feet = FALSE){
   # Use some data internal to the snowload package. The first dataset is the
   # county shapefile for Utah and the second is a list of the coefficients
   # used for each county curve.
 
-  if(!is.element(class(dem)[1], c("SpatialPointsDataFrame",
-                                  "SpatialGridDataFrame",
-                                  "SpatialPixelsDataFrame"))){
+  if(!is.element(class(newdata)[1], c("SpatialPointsDataFrame",
+                                      "SpatialGridDataFrame",
+                                      "SpatialPixelsDataFrame"))){
     stop("Prediction locations must be a spatial class from the sp package")
   }
 
   # Transform the input data to the same coordinate extent at the ut county
   # shapefile.
-  dem <- as(dem, "SpatialPointsDataFrame")
-  dem <- sp::spTransform(dem, sp::proj4string(utcounty))
+  newdata <- as(newdata, "SpatialPointsDataFrame")
+  newdata <- sp::spTransform(newdata, sp::proj4string(utcounty))
 
-  dem$COUNTYNBR <- as.numeric(as.character(sp::over(dem, utcounty)$COUNTYNBR))
+  newdata$COUNTYNBR <- as.numeric(as.character(sp::over(newdata, utcounty)$COUNTYNBR))
 
-  dem$COUNTYNBR[is.na(dem$COUNTYNBR)] <- nrow(snlw) + 1
+  newdata$COUNTYNBR[is.na(newdata$COUNTYNBR)] <- nrow(snlw) + 1
   tdf <- data.frame(COUNTY = "None", P_0 = 0, S = 0, A_0 = 0)
   snlw <- rbind(snlw, tdf)
 
-  dem$A_0 <- snlw$A_0[dem$COUNTYNBR]
-  dem$P_0 <- snlw$P_0[dem$COUNTYNBR]
-  dem$S <- snlw$S[dem$COUNTYNBR]
+  newdata$A_0 <- snlw$A_0[newdata$COUNTYNBR]
+  newdata$P_0 <- snlw$P_0[newdata$COUNTYNBR]
+  newdata$S <- snlw$S[newdata$COUNTYNBR]
+
+  # Extract the column associated with elevation
+  modeldf <- stats::model.frame(formula, newdata)
+  modeldf <- modeldf[,ncol(modeldf)]
 
   # Note that the function assumes that the input data are in meters.
   adj <- 1/(1000*ifelse(feet, 1, .3048))
-  dem$snlw <- sqrt(dem$P_0^2 + dem$S^2*((dem@data[, elevVar]*adj) - dem$A_0)^2)
-  dem$snlw[dem@data[, elevVar]*adj <= dem$A_0] <-
-    dem$P_0[dem@data[, elevVar]*adj <= dem$A_0]
+
+  snlw <- sqrt(newdata$P_0^2 + newdata$S^2*((modeldf*adj) - newdata$A_0)^2)
+
+  snlw[modeldf*adj <= newdata$A_0] <- newdata$P_0[modeldf*adj <= newdata$A_0]
 
   # Convert from psf to kpa
-  dem$snlw <- dem$snlw*.04788
+  snlw <- snlw*.04788
 
-  # Remove the variables we no longer need now that predictions are
-  # complete.
-  dem$COUNTYNBR <- NULL
-  dem$A_0 <- NULL
-  dem$P_0 <- NULL
-  dem$S <- NULL
+  # 0 valued predictions are out of state, set these to na
+  snlw[snlw == 0] <- NA
 
-  dem$snlw[dem$snlw == 0] <- NA
-
-  return(dem)
+  return(snlw)
 }
 
 
@@ -164,38 +175,50 @@ snlwf = function(dem, elevVar = c("ELEVATION"), feet = FALSE){
 #' The function is a wrapper to appropriate functions in the
 #' akima package.
 #'
-#' @param variables A vector of length two specifying the column names
-#'   of the response and elevation variables respectively.
+#' @param A forumla argument specifying the response and explanatory variables.
+#'   This formula should only be of the form RESPONSE ~ ELEVATION. No other
+#'   formula types are allowed.
 #' @param locations The measurement locations to be used for interpolation.
 #'   An object of class SpatialPointsDataFrame
 #' @param newdata The prediction locations. An objet of class
 #'   SpatialPointsDataFrame, SpatialGridDataFrame, or SpatialPixelsDataFrame.
 #' @param density The density of the grid created by the interpolation.
 #'   The first argument specifies the x density and the second the y density.
-#' @param NGSL If true, normalized ground snow loads (which are snow loads
-#'   divided by elevation) are used in prediction.
 #' @param bound_ouput If TRUE, the final ouputs are restricted to the observed
 #'   outputs at the measurement locations.
 #'
-#' @return An appended version of newdata that includes a column named
-#'   "tri_snow" with the predictions.
+#' @return A numeric vector of predictions with length equal to the number
+#'   of rows in newdata.
+#'
+#' @details Note that this function does not use the formula call directly.
+#'   Rather, if an explanatory variable is present, it is assumed to be
+#'   the variable name for elevation and a normalized response, which is
+#'   simply response/elevation, is used.
 #'
 #' @export
-tri_snow = function(variables = c("RESPONSE", "ELEVATION"),
+tri_snow = function(formula = RESPONSE ~ ELEVATION,
                     locations, newdata, density = c(500, 500),
-                    NGSL = TRUE, bound_output = FALSE, ...){
+                    bound_output = FALSE, ...){
   # Run generic tests on model inputs (see checks.R)
   input_check(locations, newdata)
 
+  # Obtain the desired model inputs.
+  modeldf <- stats::model.frame(formula, locations)
+  vars <- all.vars(formula)
+
+  if(ncol(modeldf) > 2){
+    stop("This function only allows one explanatory variable, which is elevation.")
+  }
+
   # Determine if modeing raw snow loads or the NGSL
-  if(NGSL){
-    locations$NGSL = locations@data[,variables[1]]/locations@data[,variables[2]]
+  if(ncol(modeldf) > 1){
+    locations$NGSL = modeldf[, 1]/modeldf[, 2]
     # See Akima package for details behind this function
     temppredict = akima::interp(x = locations, z = "NGSL", linear = TRUE,
                                 nx = density[1], ny = density[2])
   }else{
     # See Akima package for details behind this function
-    temppredict = akima::interp(x = locations, z = variables[1], linear = TRUE,
+    temppredict = akima::interp(x = locations, z = vars[1], linear = TRUE,
                                 nx = density[1], ny = density[2])
   }
 
@@ -215,21 +238,19 @@ tri_snow = function(variables = c("RESPONSE", "ELEVATION"),
   temppredict = raster::raster(temppredict)
   preds = raster::extract(temppredict, newdata)
 
-  if(NGSL){
-    preds = preds*newdata@data[, variables[2]]
+  if(ncol(modeldf) > 1){
+    preds = preds*newdata@data[, vars[length(vars)]]
   }
 
   if(bound_output){
-    bound_out <- c(min(locations@data[, variables[1]], na.rm = TRUE),
-                   max(locations@data[, variables[1]], na.rm = TRUE))
+    bound_out <- c(min(modeldf[, 1], na.rm = TRUE),
+                   max(modeldf[, 1], na.rm = TRUE))
 
     preds[preds < bound_out[1]] <- bound_out[1]
     preds[preds > bound_out[2]] <- bound_out[2]
   }
 
-  newdata$tri_snow <- preds
-
-  return(newdata)
+  return(preds)
 }
 
 
@@ -249,14 +270,13 @@ tri_snow = function(variables = c("RESPONSE", "ELEVATION"),
 #' @param bound_ouput If TRUE, the final ouputs are restricted to the observed
 #'   outputs at the measurement locations.
 #'
-#' @return An appended newdata object that includes a "lm_snow" column
-#'   with the model predictions. Note that if bound_elevation = TRUE then
-#'   the elevations in this object may be altered from the original.
+#' @return A numeric vector of predictions with length equal to the number
+#'   of rows in newdata.
 #'
 #' @export
 lm_snow = function(formula = log(RESPONSE) ~ ELEVATION,
-                  locations, newdata,
-                  bound_elevation = FALSE, bound_output = FALSE){
+                   locations, newdata,
+                   bound_elevation = FALSE, bound_output = FALSE){
   # Run generic tests on model inputs (see checks.R)
   input_check(locations, newdata)
 
@@ -274,13 +294,12 @@ lm_snow = function(formula = log(RESPONSE) ~ ELEVATION,
       bound_el[1]
   }
 
-  model <- lm(formula, data = as.data.frame(locations))
+  model <- lm(formula, data = locations)
 
-  preds = predict(model, as.data.frame(newdata))
+  preds = predict(model, newdata)
 
   if(bound_output){
-    temp_out <- lm(formula, data = as.data.frame(locations))
-    temp_out <- temp_out$residuals + temp_out$fitted.values
+    temp_out <- model$residuals + model$fitted.values
 
     bound_out <- c(min(temp_out, na.rm = TRUE),
                    max(temp_out, na.rm = TRUE))
@@ -289,9 +308,7 @@ lm_snow = function(formula = log(RESPONSE) ~ ELEVATION,
     preds[preds > bound_out[2]] <- bound_out[2]
   }
 
-  newdata$lm_snow <- preds
-
-  return(newdata)
+  return(preds)
 }
 
 

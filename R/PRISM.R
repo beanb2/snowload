@@ -42,39 +42,55 @@
 #' @param weights If true, return the slope, intercept, and weights for each
 #'   of the predictions. This argument is only relevant if one wishes to
 #'   plot the PRISM predictions.
-#' @param transform If "none" (the default). Regular least squares regression is
-#'   applied. If "log" or "sqrt" then the appropriate transformations are
-#'   applied. If not one of the options mentioned above, the system will
-#'   throw an error.
+#' @param score Additional arguments to
 #'
-#' @return An appended version of the prediction locations spatial object
-#'   with the added "prism" column. If weights = TRUE, then a list is returned
-#'   with the second item being the matrix of PRISM weights.
+#' @return A numeric vector of predictions with length equal to the number
+#'   of rows in newdata.
 #'
 #' @export
-prism = function(variables = c("RESPONSE", "ELEVATION"),
+prism = function(formula = log(RESPONSE) ~ ELEVATION,
                  locations,
                  newdata,
                  distImp = 0.8,
                  minRad = 10,
                  wdistance = 2,
-                 welevRange = c(200, 2500),
+                 welevRange = list(lwr = 200, upr = 2500),
                  welevation = c("ELEVATION", 1),
                  wbasin = c(NA, 3),
                  weco = c(NA, 3),
                  bound = FALSE,
                  weights = FALSE,
-                 transform = "none"){
+                 ...){
 
   # Run generic tests of model inputs
   input_check(locations, newdata)
 
   # Ensure that the arguments for the weights are properly specified
-  tl <- c(length(welevation), length(wbasin), length(weco))
-  if(min(tl) < 2 | max(tl) > 2){
-    stop("The \'welevation\', \'wbasin\', and \'weco\' arguments must all be
-         of length 2.")
+  tl <- c(length(welevation)-1, length(wbasin)-1, length(weco)-1,
+          length(welevRange[[1]]), length(welevRange[[2]]))
+
+  # Throw a warning if not enough weight arguments are supplied.
+  if(any(tl < 1)){
+    stop("Each weight argument must have one numeric weight supplied.")
   }
+
+  # If more than one argument is supplied for any of the parameters,
+  # call the tuning function.
+  if(any(tl > 1)){
+    tune_results <- prism_tune(formula = formula,
+                               locations = locations,
+                               distImp = distImp, minRad = minRad,
+                               wdistance = wdistance, welevRange = welevRange,
+                               welevation = welevation, wbasin = wbasin,
+                               weco = weco, bound = FALSE, ...)
+
+    tune_results <- as.vector(tune_results[1, ])
+  }else{
+    tune_results <- c(distImp, minRad, wdistance, welevRange[[1]],
+                      welevRange[[2]], as.numeric(welevation[2]),
+                      as.numeric(wbasin[2]), as.numeric(weco[2]))
+  }
+  # We store the final paramters (tune or not) in the tune_results variable.
 
   # Make sure that the required columns are in the dataset.
 
@@ -98,25 +114,21 @@ prism = function(variables = c("RESPONSE", "ELEVATION"),
     }
   }
 
-  # Make sure that any specified transformations are accepted.
-  if(!is.element(transform, c("none", "log", "sqrt"))){
-    stop("The only valid options for transform are \"log\",
-    \"sqrt\", and \"none\"")
-  }
-
   # Find the distance and elevation weights (required)
-  wd <- getDistWeight(locations, newdata, minRad, wdistance)
+  wd <- getDistWeight(locations, newdata, tune_results[2],
+                      tune_results[3])
   wz <- getElevWeight(unlist(locations[, welevation[1]]@data),
                       unlist(newdata[, welevation[1]]@data),
-                      as.numeric(welevation[2]), welevRange)
+                      tune_results[6], c(tune_results[4],
+                                         tune_results[5]))
 
-  wc <- getClusterWeight(locations, minRad, welevRange[1])
+  wc <- getClusterWeight(locations, tune_results[2], tune_results[4])
 
   # Get the basin weight (if requested)
   if(!is.na(wbasin[1])){
     wb <- getHUCWeight(unlist(locations[, wbasin[1]]@data),
                        unlist(newdata[, wbasin[1]]@data),
-                       as.numeric(wbasin[2]))
+                       tune_results[7])
   }else{
     wb <- 1
   }
@@ -125,13 +137,13 @@ prism = function(variables = c("RESPONSE", "ELEVATION"),
   if(!is.na(weco[1])){
     wf <- getEcoWeight(unlist(locations[, weco[1]]@data),
                        unlist(newdata[, weco[1]]@data),
-                       as.numeric(weco[2]))
+                       tune_results[8])
   }else{
     wf <- 1
   }
 
   # Apply weighting equation from Daley et.al. 2008
-  weightV <- wc*sqrt(distImp*wd^2 + (1-distImp)*wz^2)*wb*wf
+  weightV <- wc*sqrt(tune_results[1]*wd^2 + (1-tune_results[1])*wz^2)*wb*wf
 
   # Scale the weights to sum to 1
   for(i in 1:ncol(weightV)){
@@ -143,15 +155,14 @@ prism = function(variables = c("RESPONSE", "ELEVATION"),
   ##################################
 
   # Preallocate for predictions
-  response <- unlist(locations[, variables[1]]@data)
+  modeldf <- stats::model.frame(formula, locations)
+  vars = all.vars(formula)
+  explanatory <- as.vector(modeldf[, -1])
+  response <-  as.matrix(modeldf[, 1])
 
-  if(transform == "log"){response <- log(response + 1)}
-  if(transform == "sqrt"){response <- sqrt(response)}
+  tempReg <- matrix(0, nrow = length(newdata), ncol = ncol(modeldf))
 
-  explanatory <- as.matrix(locations[, variables[2:length(variables)]]@data)
-  tempReg <- matrix(0, nrow = length(newdata), ncol = length(variables))
-
-  predictP <- as.matrix(newdata[, variables[2:length(variables)]]@data)
+  predictP <- as.matrix(newdata@data[, vars[2:length(vars)]])
   predictP <- cbind(1, predictP)
 
   for(i in 1:nrow(tempReg)){
@@ -176,20 +187,92 @@ prism = function(variables = c("RESPONSE", "ELEVATION"),
     predictP[predictP > bound_out[2]] <- bound_out[2]
   }
 
-  if(transform == "log"){predictP <- exp(predictP) - 1}
-  if(transform == "sqrt"){predictP <- predictP^2}
-
   # If weights are requested (for visualization) then return a list.
   # Otherwise, return the appended spatial data frame.
   if(weights){
-    newdata$prism <- predictP
-    newdata$slope <- tempReg[, 2]
-    newdata$intercept <- tempReg[, 1]
-    return(list(newdata, weightV))
+    tdf <- data.frame(prism = predictP,
+                      slope = tempReg[, 2],
+                      intercept = tempReg[, 1])
+    return(list(tdf, weightV))
   }else{
-    newdata$prism <- predictP
-    return(newdata)
+    return(predictP)
   }
+}
+
+
+# This file contains all model tuning functions.
+
+#' Function to tune PRISM parameters using cross validation.
+#'
+#' This function conducts a grid search over the given list of
+#' parameters and selects parameters that minimize the cross validated
+#' error according to the provided scoring method.
+#'
+#'
+#' @export
+prism_tune <- function(formula = log(RESPONSE) ~ ELEVATION,
+                       locations,
+                       distImp = 0.8,
+                       minRad = 10,
+                       wdistance = 2,
+                       welevRange = list(lwr = 200, upr = 2500),
+                       welevation = c("ELEVATION", 1),
+                       wbasin = c(NA, 3),
+                       weco = c(NA, 3),
+                       bound = FALSE,
+                       tune_folds = 10,
+                       tune_score = "MAE"){
+
+  # Determine the number of combinations in the search.
+  tlength <- length(distImp)*length(minRad)*length(wdistance)*
+    length(welevRange[[1]])*length(welevRange[[2]])*
+    (length(welevation)-1)*(length(wbasin)-1)*
+    (length(weco)-1)
+
+  # Create a matrix to store the results.
+  tdf <- matrix(0, nrow = tlength, ncol = 9)
+  colnames(tdf) <- c("distImp", "minRad", "wdistance", "lwr", "upr",
+                     "welevation", "wbasin", "weco", "score")
+  count <- 1
+  for(w1 in as.numeric(distImp)){
+    for(w2 in as.numeric(minRad)){
+      for(w3 in as.numeric(wdistance)){
+        for(w4 in as.numeric(welevRange[[1]])){
+          for(w5 in as.numeric(welevRange[[2]])){
+            for(w6 in as.numeric(welevation[-1])){
+              for(w7 in as.numeric(wbasin[-1])){
+                for(w8 in as.numeric(weco[-1])){
+                  acc <- crv_pred(locations, formula,
+                                  fun = "prism",
+                                  distImp = w1, minRad = w2, wdistance = w3,
+                                  welevRange = list(lwr = w4, upr = w5),
+                                  welevation = c(welevation[1], w6),
+                                  wbasin = c(wbasin[1], w7),
+                                  weco = c(weco[1], w8),
+                                  folds = tune_folds,
+                                  score = tune_score)
+
+                  if(length(acc) > 1){
+                    stop("Model score length is greater than 1, make sure you specified a
+                    proper scoring method.")
+                  }
+
+                  # Store the results.
+                  tdf[count, ] <- c(w1, w2, w3, w4, w5, w6, w7, w8, acc)
+
+                  # Advance
+                  count <- count + 1
+                } # end w8
+              } # end w7
+            } # end w6
+          } # end w5
+        } # end w4
+      } # end w3
+    } # end w2
+  } # end w1
+
+  tdf <- tdf[order(tdf[, 9]), ]
+  return(tdf)
 }
 
 

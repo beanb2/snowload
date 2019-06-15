@@ -32,10 +32,8 @@ correlation between locations when fitting the linear model for
 elevation.}
 }
 \value{
-An appended version of newdata which includes a column
-  named "rkriging" containing the predictions. Note that if
-  bound_elevation-TRUE then the elevations in this object might be
-  different than the original object.
+A numeric vector of predictions with length equal to the number
+  of rows in newdata.
 }
 \description{
 The function combines simple kriging with varying local means (SKLM) and
