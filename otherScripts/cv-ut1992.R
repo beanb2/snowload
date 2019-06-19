@@ -20,7 +20,7 @@ errors2 <- try(foreach::foreach(i = 1:trials,
                                               "sp",
                                               "gstat",
                                               "stats")) %dopar%
-                 snowload_trials(ut2017)
+                 snowload_trials(tdata)
 )
 
 if(inherits(errors2, "try-error")){

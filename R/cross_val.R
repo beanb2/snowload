@@ -60,11 +60,11 @@ crv_pred <- function(tdata, formula, fun, folds = 10,
     errors <- tdf[, 1] - preds
 
     if(score == "MAE"){
-      return(mean(abs(errors)))
+      return(mean(abs(errors), na.rm = TRUE))
     }else if(score== "RMSE"){
-      return(sqrt(mean(errors^2)))
+      return(sqrt(mean(errors^2, na.rm = TRUE)))
     }else if(score== "ME"){
-      return(mean(errors))
+      return(mean(errors, na.rm = TRUE))
     }else{ # Throw an error for invalid scoring s.
       stop("Valid scoring methodss are \'MAE\', \'RMSE\' and \'ME\'")
     }
