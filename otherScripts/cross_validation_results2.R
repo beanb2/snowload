@@ -1,13 +1,13 @@
 # Write a function that will return the cross validated error for one of the three
 # snowload datasets we are comparing to.
-snowload_trials <- function(tdata, message = FALSE){
+snowload_trials2 <- function(tdata, message = FALSE){
   # Pre-allocate a three dimensional array to store the errors.
   errors <- matrix(0, nrow = nrow(tdata), ncol = 7)
   ### PRISM predictions
   # Notice that we tune the predictions along the way for
   # some parameters.
   fun <- "prism"
-  preds <- try(crv_pred(tdata, formula = log(yr50) ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50 + 1) ~ ELEVATION,
                     fun = fun,
                     message = message,
                     distImp = 0.8,
@@ -29,11 +29,11 @@ snowload_trials <- function(tdata, message = FALSE){
 
 
   # Record the prism CV errors
-  errors[, 1] <- tdata$yr50 - exp(preds)
+  errors[, 1] <- tdata$yr50 - (exp(preds) - 1)
 
   ### SKLM predictions
   fun <- "rkriging"
-  preds <- try(crv_pred(tdata, formula = log(yr50) ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50 + 1) ~ ELEVATION,
                         fun = fun,
                         model = gstat::vgm("Sph"), sklm = TRUE,
                         debug.level = 0), silent = TRUE)
@@ -44,11 +44,11 @@ snowload_trials <- function(tdata, message = FALSE){
   }
 
   # record the sklm cv errors
-  errors[, 2] <- tdata$yr50 - exp(preds)
+  errors[, 2] <- tdata$yr50 - (exp(preds) - 1)
 
   ### UK predictions
   fun <- "rkriging"
-  preds <- try(crv_pred(tdata, formula = log(yr50) ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50 + 1) ~ ELEVATION,
                     fun = fun,
                     model = gstat::vgm("Sph"), sklm = FALSE,
                     debug.level = 0), silent = TRUE)
@@ -60,15 +60,15 @@ snowload_trials <- function(tdata, message = FALSE){
 
 
   # record the sklm cv errors
-  errors[, 3] <- tdata$yr50 - exp(preds)
+  errors[, 3] <- tdata$yr50 - (exp(preds) - 1)
 
   ### IDW_snow preds (as implemented in Idaho)
   fun <- "idw_snow"
   # Notice no log transform when doing NGSL predictions
-  preds <- try(crv_pred(tdata, formula = yr50 ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50 + 1) ~ ELEVATION,
                     fun = fun,
-                    NGSL = TRUE, tlayer = 1219.2,
-                    debug.level = 0), silent = TRUE)
+                    NGSL = TRUE, tlayer = NA,
+                    print = FALSE), silent = TRUE)
 
   if(inherits(preds, "try-error")){
     print(paste("Method", fun, "failed to predict..."))
@@ -76,12 +76,12 @@ snowload_trials <- function(tdata, message = FALSE){
   }
 
   # record the idw_snow cv errors
-  errors[, 4] <- tdata$yr50 - preds
+  errors[, 4] <- tdata$yr50 - (exp(preds) - 1)
 
   ### tri_snow preds
   fun <- "tri_snow"
   # Notice no log transform when doing NGSL predictions
-  preds <- try(crv_pred(tdata, formula = yr50 ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50+1) ~ ELEVATION,
                     fun = fun), silent = TRUE)
 
   if(inherits(preds, "try-error")){
@@ -90,11 +90,11 @@ snowload_trials <- function(tdata, message = FALSE){
   }
 
   # record the tri_snow cv errors
-  errors[, 5] <- tdata$yr50 - preds
+  errors[, 5] <- tdata$yr50 - (exp(preds) - 1)
 
   ### lr_snow preds
   fun <- "lm_snow"
-  preds <- try(crv_pred(tdata, formula = log(yr50) ~ ELEVATION,
+  preds <- try(crv_pred(tdata, formula = log(yr50 + 1) ~ ELEVATION,
                     fun = fun), silent = TRUE)
 
   if(inherits(preds, "try-error")){
@@ -103,7 +103,7 @@ snowload_trials <- function(tdata, message = FALSE){
   }
 
   # record the lr_snow cv errors
-  errors[, 6] <- tdata$yr50 - exp(preds)
+  errors[, 6] <- tdata$yr50 - (exp(preds) - 1)
 
   if(inherits(preds, "try-error")){
     print(paste("Method", fun, "failed to predict..."))

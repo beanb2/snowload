@@ -5,7 +5,8 @@
 \title{Regression-kriging functions for snow load estimation.}
 \usage{
 rkriging(formula = log(RESPONSE) ~ ELEVATION, locations, newdata, model,
-  bound_elevation = FALSE, bound_output = FALSE, sklm = FALSE, ...)
+  bound_elevation = FALSE, bound_output = FALSE, sklm = FALSE,
+  weights = FALSE, ...)
 }
 \arguments{
 \item{formula}{The formula used to account for elevation in the predictions.
@@ -30,6 +31,9 @@ of observed data at measurement locations.}
 use "universal kriging". The only difference is that sklm assumes no
 correlation between locations when fitting the linear model for
 elevation.}
+
+\item{weights}{If TRUE, bundle the weights and linear model coefficients
+as a list. Should be used only for plotting illustrations.}
 }
 \value{
 A numeric vector of predictions with length equal to the number

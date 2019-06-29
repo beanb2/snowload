@@ -11,7 +11,9 @@
 #'   SpatialPointsDataFrame, SpatialGridDataFrame, or SpatialPixelsDataFrame.
 #' @param tlayer The elevation (in meters) on which to split the data. The
 #'   Idaho snow load report splits the state into two layers using
-#'   4000 ft (1219.2 meters) as a cutoff.
+#'   4000 ft (1219.2 meters) as a cutoff. This variable can also be set
+#'   to NA, at which point an automatic separating elevation method is
+#'   applied (see details).
 #' @param power A vector of length 2 indicating the exponent in the inverse
 #'   distance weighting for the lower and upper elevations respectively.
 #' @param NGSL If true, used normalized ground snow loads, which are simply
@@ -19,14 +21,24 @@
 #'   for in the 2015 Idaho study.
 #' @param bound_output If true, the final predictions are capped at the range
 #'   of observed data.
+#' @param corMethod (only relevant if tlayer = NA). The method by which
+#'   correlations are determined when deciding on a separating elevation.
+#'   Valid options include "pearson", "spearman" and "kendall"
+#' @param print If true, gstat package messages are printed to the screen, as well as the
+#'   separating elevation.
 #'
 #' @return An appended version of the newdata class containing a column named
 #'   "idw_snow".
 #'
+#' @details
+#' One of the great challenges of this method is the proper selection
+#' of a separating elevation.
+#'
 #' @export
 idw_snow = function(formula = RESPONSE ~ ELEVATION,
                     locations, newdata, tlayer = 1220, power = c(2, 6),
-                    NGSL = TRUE, bound_output = FALSE, ...){
+                    NGSL = TRUE, bound_output = FALSE,
+                    corMethod = "spearman", print = FALSE, ...){
   # Run generic tests of model inputs
   input_check(locations, newdata)
 
@@ -38,7 +50,7 @@ idw_snow = function(formula = RESPONSE ~ ELEVATION,
     # NGSL can only be performed if a single explanatory variable
     # is provided (representing elevation)
     if(ncol(modeldf) != 2){
-      stop("Exact one response variable and one explanatory variable
+      stop("Exactly one response variable and one explanatory variable
            (corresponding to elevation) must be supplied when NGSL = TRUE")
     }
 
@@ -51,7 +63,41 @@ idw_snow = function(formula = RESPONSE ~ ELEVATION,
 
     locations$NGSL <- modeldf[, 1]/modeldf[, 2]
     formula = NGSL ~ 1
+
+    # If no value for tlayer is supplied, automatically fit one that minimizes
+    # a weighted average of absolute correlations between the upper and lower
+    # layers.
+    if(is.na(tlayer)){
+      range = quantile(locations@data[, vars[2]], seq(0.25, 0.75, .1),
+                       na.rm = TRUE)
+
+      # Append the range to include all stations in either layer.
+      range <- c(range, 1e16)
+
+      # Cycle through the range and determine which separating elevation
+      # is best based on percentages of 10 in the interquartile range.
+      results <- matrix(0, ncol = 2, nrow = length(range))
+      for(i in 1:length(range)){
+        results[i, 1] <- range[i]
+        results[i, 2] <- checkCor(locations, range[i], vars, corMethod)
+      }
+
+      # Set the separating elevation to this value.
+      tlayer <- results[which.min(results[, 2]), 1]
+
+      remove(results)
+      if(print){print(paste("Separating elevation:", tlayer))}
+    }
+  }else{
+    if(is.na(tlayer)){
+      warning("Automatic elevation separating is only relevant when NGSL = TRUE.
+              Placing all stations in the lower layer...")
+      tlayer = 0
+    }
   }
+
+  # If print is requested, set debug.level = 1
+  debug.level <- ifelse(print, 1, 0)
 
   # Split stations into two layers (above and below 4000 ft (1219.2m) in the idaho method)
   locations.low = locations[as.vector(locations[, vars[2]]@data < tlayer), ]
@@ -60,7 +106,7 @@ idw_snow = function(formula = RESPONSE ~ ELEVATION,
   # Obtain the bi-layer results
   if(nrow(locations.low) > 0){
     temp2 = gstat::idw(formula, locations = locations.low, newdata = newdata,
-                       idp = power[1], ...)$var1.pred
+                       idp = power[1], debug.level = debug.level, ...)$var1.pred
   }else{
     temp2 = NULL
     # print("No stations exist in the lower layer, using only one layer with exponent c2...",
@@ -68,7 +114,7 @@ idw_snow = function(formula = RESPONSE ~ ELEVATION,
   }
   if(nrow(locations.high) > 0){
     temp6 = gstat::idw(formula, locations = locations.high, newdata = newdata,
-                       idp = power[2], ...)$var1.pred
+                       idp = power[2], debug.level = debug.level, ...)$var1.pred
   }else{
     temp6 = NULL
   }
@@ -98,6 +144,36 @@ idw_snow = function(formula = RESPONSE ~ ELEVATION,
 
   return(results)
 } # End the function
+
+#
+#
+#
+# Source code for the checkCor function that is called by idw_snow.
+# tdata - (usually locations) to check for correlations
+# vars - (passed from parent functions) the names of the variables
+#   specified in the formula
+# method - measure of correlation, either pearson, spearman,
+#  or kendall
+checkCor <- function(tdata, tlayer, vars, method){
+  high <- tdata[tdata@data[, vars[2]] > tlayer, ]
+  low <- tdata[tdata@data[, vars[2]] <= tlayer, ]
+
+  lowcor <- stats::cor(low@data[, vars[2]], low$NGSL, method = method,
+                       use = "na.or.complete")
+  highcor <- stats::cor(high@data[, vars[2]], high$NGSL, method = method,
+                        use = "na.or.complete")
+
+  # If the correlation yields a missing value (due to a lack of data),
+  # return a 0.
+  if(is.na(lowcor)){lowcor <- 0}
+  if(is.na(highcor)){highcor <- 0}
+
+  # Return a weighted average of the absolute correlations based on elevation
+  return( (nrow(high)*abs(highcor) + nrow(low)*abs(lowcor)) / nrow(tdata) )
+}
+#
+#
+#
 
 
 # Function to create old utah map given an input DEM
@@ -152,7 +228,7 @@ snlwf = function(formula = ~ELEVATION, newdata, feet = FALSE){
   modeldf <- stats::model.frame(formula, newdata)
   modeldf <- modeldf[,ncol(modeldf)]
 
-  # Note that the function assumes that the input data are in meters.
+  # Note that the function assumes by default that the input data are in meters.
   adj <- 1/(1000*ifelse(feet, 1, .3048))
 
   snlw <- sqrt(newdata$P_0^2 + newdata$S^2*((modeldf*adj) - newdata$A_0)^2)

@@ -44,8 +44,10 @@
 #'   plot the PRISM predictions.
 #' @param score Additional arguments to
 #'
-#' @return A numeric vector of predictions with length equal to the number
-#'   of rows in newdata.
+#' @return If weights = FALSE, a numeric vector of predictions with length equal
+#'   to the number of rows in newdata. Else, a list with the first component
+#'   containing the prediction, intercept, and slope, and the second component
+#'   containing a matrix of weights.
 #'
 #' @export
 prism = function(formula = log(RESPONSE) ~ ELEVATION,

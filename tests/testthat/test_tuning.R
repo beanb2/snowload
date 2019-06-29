@@ -53,7 +53,6 @@ test_that("rkriging auto variogram fitting working as expected", {
   data(ut2017)
   sp::coordinates(ut2017) <- c("LONGITUDE", "LATITUDE")
   sp::proj4string(ut2017) <- sp::proj4string(utdem2)
-  set.seed(123)
 
   g <- gstat::gstat(NULL, "vario", log(yr50 + 1) ~ ELEVATION, ut2017)
   g_vario <- gstat::variogram(g)
@@ -67,4 +66,14 @@ test_that("rkriging auto variogram fitting working as expected", {
   expect_equal(output, output2)
 })
 
+test_that("idw_snow elevation splitting working as expected", {
+  data(ut2017)
+  sp::coordinates(ut2017) <- c("LONGITUDE", "LATITUDE")
+  sp::proj4string(ut2017) <- sp::proj4string(utdem2)
+
+  output <- idw_snow(yr50 ~ ELEVATION, ut2017, utdem2, tlayer = NA)
+  output2 <- idw_snow(yr50 ~ ELEVATION, ut2017, utdem2, tlayer = 2079.3)
+
+  expect_equal(output, output2)
+})
 
