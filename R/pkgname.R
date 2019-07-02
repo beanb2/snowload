@@ -9,5 +9,6 @@
 # Include the necessary package imports in this file.
 #' @import sp
 #' @import gstat
+#' @importFrom Rdpack reprompt
 NULL
 

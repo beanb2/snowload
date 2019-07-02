@@ -62,8 +62,10 @@ computations.}
 \item{score}{Additional arguments to}
 }
 \value{
-A numeric vector of predictions with length equal to the number
-  of rows in newdata.
+If weights = FALSE, a numeric vector of predictions with length equal
+  to the number of rows in newdata. Else, a list with the first component
+  containing the prediction, intercept, and slope, and the second component
+  containing a matrix of weights.
 }
 \description{
 A function that implements the PRISM algorithm as developed by Daly et.al.
