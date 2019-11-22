@@ -18,7 +18,8 @@ Imports:
     utils,
     Rdpack
 Suggests: 
-    raster
+    raster,
+    gstat
 RdMacros: Rdpack
 Depends: 
     R (>= 3.5.0),
