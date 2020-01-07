@@ -4,7 +4,11 @@
 .Ruserdata
 
 # Ignore raw data files (too large for github)
-data-raw/*
+data-raw/Counties/*
+data-raw/csv/*
+data-raw/robjects/*
+data-raw/shapefiles/*
+
 
 # Ignore the miscellaneous folder where I store random code. 
 misc/*
